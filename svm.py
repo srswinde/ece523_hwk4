@@ -41,25 +41,55 @@ def sklearn_Ws():
 
 
 def cvxopt_Ws():
+	"""Build the model using cvxopt quadratic
+	programming optimizer.
+	min(x) in 0.5(x^T)Px + q^Tx
+	Where x is the lagrangian multiplier from the SVM equation
+	P_ij = y_i*y_j*x_i*x_j^T
+	Gx <= h
+	Ax = b
+	
+	"""
 	train = pd.read_csv('source_train.csv').as_matrix()
 	x = matrix( train[ :, :2 ] )
 	y = matrix( train[ :, 2 ] )
 	C=1.0
 	n = y.size[0]
 	P = np.zeros((n,n))
+	
+	#build the P matrix
 	for i in range(n):
 		for j in range(n):
 			P_ij = y[i]*y[j]*x[i,:] *x[j,:].T
 
 			P[i, j] = P_ij[0]
-
+	
 	P=matrix(P)
+
+	#q matrix
 	q=matrix( [1 for i in range(n)], tc='d' )
-	b=matrix([0 for i in range(n)])
+	#b matrix
+	b=matrix([0], tc='d')
 	A=y.T
-	h = matrix( np.array( [[0], [C]] ), tc='d' ) # THe bounds of lagrange multiplier
-	G = matrix( np.array( [[-1 for i in range(n)], [1 for i in range(n)]] ), tc='d' )
-	sol = solvers.qp(P, q, G, h, A, b )
+
+	h = matrix( np.zeros((2*n,1)), tc='d' )
+	h[:n] = 0.0
+	h[n:] = C
+	G = matrix( np.zeros((2*n,n)), tc='d' )
+	# G is basically to identity matrices stacked on top of eachother.
+	G[:n, :] = -np.eye(n)
+	G[n:, : ] = np.eye(n)
+	try:
+		sol = solvers.qp(P, q, G, h, A, b )
+	except Exception as err:
+		print(err)
+		return P, q, G, h, A, b
+
+	alphas = sol['x']
+	Ws = np.zeros((1,2))
+	for i in range(n):
+		Ws = Ws + alphas[i], y[i]
+
 	
 
 	
