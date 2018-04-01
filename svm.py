@@ -13,13 +13,13 @@ def mesh(samples, step=0.2):
     return xx, yy
 
 
-def get_train():
-	train = pd.read_csv('source_train.csv').as_matrix()
+def get_data(fname):
+	train = pd.read_csv(fname).as_matrix()
 
-	return train[ :, :2 ], train[ :, 2 ]
+	return matrix( train[ :, :2 ] ), matrix( train[ :, 2 ] )
 
 
-def sklearn_Ws():
+def svm_sklearn():
 	train = pd.read_csv('source_train.csv').as_matrix()
 
 	x = train[ :, :2 ]
@@ -36,11 +36,12 @@ def sklearn_Ws():
 	pylab.plot(x[:, 0][y==-1], x[:,1][y==-1], 'kx')
 
 	pylab.show()
+	return clf
 
 
 
 
-def cvxopt_Ws():
+def svm_cvxopt(x, y, C=1.0, B=0, Ws=None):
 	"""Build the model using cvxopt quadratic
 	programming optimizer.
 	min(x) in 0.5(x^T)Px + q^Tx
@@ -50,10 +51,11 @@ def cvxopt_Ws():
 	Ax = b
 	
 	"""
-	train = pd.read_csv('source_train.csv').as_matrix()
-	x = matrix( train[ :, :2 ] )
-	y = matrix( train[ :, 2 ] )
-	C=1.0
+
+
+	if Ws == None and B != 0:
+			raise ValueError("Ws must have a value matrix(2x1) if B is not 0")
+			
 	n = y.size[0]
 	P = np.zeros((n,n))
 	
@@ -64,34 +66,61 @@ def cvxopt_Ws():
 
 			P[i, j] = P_ij[0]
 	
-	P=matrix(P)
+	P=matrix( P )
 
 	#q matrix
 	q=matrix( [1 for i in range(n)], tc='d' )
+
 	#b matrix
 	b=matrix([0], tc='d')
 	A=y.T
 
+	#h matrix 
 	h = matrix( np.zeros((2*n,1)), tc='d' )
 	h[:n] = 0.0
 	h[n:] = C
+	
+	#G matrix
 	G = matrix( np.zeros((2*n,n)), tc='d' )
-	# G is basically to identity matrices stacked on top of eachother.
+	# G is basically two identity matrices stacked on top of eachother.
 	G[:n, :] = -np.eye(n)
 	G[n:, : ] = np.eye(n)
+
+
 	try:
-		sol = solvers.qp(P, q, G, h, A, b )
+		sol = solvers.qp( P, q, G, h, A, b )
 	except Exception as err:
 		print(err)
 		return P, q, G, h, A, b
 
 	alphas = sol['x']
-	Ws = np.zeros((1,2))
-	for i in range(n):
-		Ws = Ws + alphas[i], y[i]
+	if Ws:
+		
+		W = matrix( np.zeros((1,2)) ) + B*Ws
+	else:
+		W = matrix( np.zeros((1,2)) ) 
+	
+	try:
+		for i in range(n):
+			W = W + alphas[i]*y[i]*x[i, :]
+	except Exception as err:
+		print( err )
+		return alphas, y, x
+
+	return W
 
 	
 
 	
 	
+def main():
+	x_source, y_source = get_data('source_train.csv')
+	x_target, y_target = get_data('target_train.csv')
+
+	W_s = svm_cvxopt( x_source, y_source )
+	W_t = svm_cvxopt( x_target, y_target, B=1e-1, Ws=W_s )
 	
+	print (W_s)
+	print (W_t)
+	
+main()
